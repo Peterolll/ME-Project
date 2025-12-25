@@ -1,0 +1,239 @@
+import React, { useState, useMemo } from 'react';
+import {
+  ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine
+} from 'recharts';
+import { 
+  Skull, 
+  ArrowRightLeft, 
+  ShieldCheck,
+  TrendingDown,
+  Users,
+  Trophy,
+  AlertTriangle,
+  Activity
+} from 'lucide-react';
+
+const App = () => {
+  const [activeTab, setActiveTab] = useState('welfare');
+  const [hasSubsidy, setHasSubsidy] = useState(false);
+  const [compType, setCompType] = useState('asymmetric');
+
+  // 1. Market & Welfare Data - Focused on Shift and DWL
+  const welfareData = useMemo(() => {
+    const d_shift = hasSubsidy ? 30 : 0; 
+    const s_subsidy = hasSubsidy ? 45 : 0; 
+    
+    const points = [];
+    const q_optimal_val = 120;
+    const q_actual_val = (180 + d_shift + s_subsidy) / 1.5;
+
+    for (let i = 0; i <= 15; i++) {
+      const q = i * 15;
+      const d0 = Math.max(0, 220 - 0.9 * q);
+      const d1 = Math.max(0, (220 + d_shift) - 0.9 * q);
+      const s_true = 40 + 0.6 * q;
+      const s_priv = Math.max(0, s_true - s_subsidy);
+      
+      // Deadweight Loss (DWL) area: Only between Q_opt and Q_act
+      let dwlRange = null;
+      if (hasSubsidy && q >= q_optimal_val && q <= q_actual_val + 5) {
+        dwlRange = [d1, s_true]; 
+      }
+
+      points.push({ q, d0, d1, s_true, s_priv, dwlRange });
+    }
+    return { points, q_optimal_val, q_actual_val };
+  }, [hasSubsidy]);
+
+  // 2. Comprehensive Cost Data
+  const costData = useMemo(() => {
+    const subsidy_val = 35; 
+    return Array.from({ length: 11 }, (_, i) => {
+      const q = (i + 1) * 15;
+      const fc = 500; 
+      const avc_base = 110 - 2 * (q/15);
+      const ac_base = (fc / q) + avc_base;
+      const mc_base = 120 - 3 * (q/15);
+      const avc_sub = avc_base - subsidy_val;
+      const ac_sub = (fc / q) + avc_sub;
+      const mc_sub = mc_base - subsidy_val; 
+
+      return { 
+        q, 
+        mc_base, 
+        ac_base: Math.round(ac_base), 
+        avc_base: Math.round(avc_base),
+        mc_sub,
+        ac_sub: Math.round(ac_sub),
+        avc_sub: Math.round(avc_sub)
+      };
+    });
+  }, []);
+
+  // 3. Payoff Matrix
+  const matrixData = useMemo(() => {
+    if (compType === 'symmetric') {
+      return {
+        rL: "Firm A", cL: "Firm B",
+        hh: [100, 100], hl: [-50, 200], lh: [200, -50], 
+        ll: hasSubsidy ? [85, 85] : [50, 50],
+        analysis: "Symmetric Trap: Subsidies soften the punishment of price wars, delaying market exit."
+      };
+    } else {
+      const b_ll_val = hasSubsidy ? 20 : -100;
+      return {
+        rL: "Efficient", cL: "Inefficient",
+        hh: [120, 30], hl: [40, 80], lh: [180, -40], 
+        ll: [60, b_ll_val],
+        analysis: hasSubsidy 
+          ? "Soft Budget Constraint: Subsidy saves inefficient firms, prolonging overcapacity."
+          : "Market Clearing: Inefficient firms exit due to heavy losses, restoring efficiency."
+      };
+    }
+  }, [compType, hasSubsidy]);
+
+  const tooltipFormatter = (value) => {
+    if (Array.isArray(value)) return `Gap: ${Math.round(value[1] - value[0])}`;
+    return Math.round(value);
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 p-4 md:p-8 font-sans text-slate-900">
+      <div className="max-w-4xl mx-auto space-y-6">
+        
+        {/* Header Panel */}
+        <div className="bg-white p-6 rounded-3xl shadow-xl border border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4">
+          <div>
+            <h1 className="text-xl font-black tracking-tight text-slate-800 uppercase">NEV Strategic Dashboard</h1>
+            <p className="text-slate-400 text-[10px] uppercase font-bold tracking-widest mt-1">v10.0 • Clean Efficiency Focus</p>
+          </div>
+          <button 
+            onClick={() => setHasSubsidy(!hasSubsidy)}
+            className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-xs font-bold transition-all ${
+              hasSubsidy ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-200' : 'bg-slate-200 text-slate-500'
+            }`}
+          >
+            {hasSubsidy ? <ShieldCheck size={16}/> : <TrendingDown size={16}/>}
+            {hasSubsidy ? 'SUBSIDY ACTIVE' : 'NO SUBSIDY'}
+          </button>
+        </div>
+
+        {/* Navigation Tabs */}
+        <div className="flex bg-white p-1 rounded-2xl shadow-sm border border-slate-200">
+          <button onClick={() => setActiveTab('welfare')} className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === 'welfare' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}>Market Shift & DWL</button>
+          <button onClick={() => setActiveTab('matrix')} className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === 'matrix' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}>Strategic Matrix</button>
+          <button onClick={() => setActiveTab('survival')} className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === 'survival' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}>Survival Logic</button>
+        </div>
+
+        {/* Content Area */}
+        <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200 min-h-[550px]">
+          
+          {/* TAB: Market Shift & DWL */}
+          {activeTab === 'welfare' && (
+            <div className="space-y-6 animate-in fade-in duration-500">
+              <div className="p-4 bg-red-50 rounded-2xl border border-red-100 flex items-start gap-3 shadow-sm">
+                <Activity className="text-red-500 mt-0.5" size={16}/>
+                <div className="text-xs font-medium text-red-800 leading-relaxed">
+                   <strong>Deadweight Loss (DWL) Analysis:</strong> 
+                   When subsidies drive production beyond the social optimum, the real social cost (SMC) exceeds consumer valuation (Demand). 
+                   The red shaded area quantifies this <strong>efficiency loss</strong> to society.
+                </div>
+              </div>
+
+              <div className="h-[400px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={welfareData.points} margin={{ top: 20, right: 30, left: 30, bottom: 40 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis dataKey="q" label={{ value: 'Quantity (Q)', position: 'insideBottomRight', offset: 0, dy: 15 }} tick={{ fontSize: 10 }} />
+                    <YAxis label={{ value: 'Price (P)', angle: -90, position: 'insideLeft', offset: -15 }} tick={{ fontSize: 10 }} />
+                    <Tooltip formatter={tooltipFormatter} />
+                    <Legend verticalAlign="top" height={36}/>
+                    
+                    {/* DWL Highlighted */}
+                    {hasSubsidy && (
+                      <Area 
+                        dataKey="dwlRange" 
+                        stroke="none" 
+                        fill="#ef4444" 
+                        fillOpacity={0.3} 
+                        name="Deadweight Loss (DWL)" 
+                      />
+                    )}
+                    
+                    <Line type="monotone" dataKey="d1" stroke="#1e293b" strokeWidth={3} name="Effective Demand (D1)" dot={false} />
+                    <Line type="monotone" dataKey="s_true" stroke="#94a3b8" strokeWidth={2} name="Social Cost (SMC)" dot={false} />
+                    <Line type="monotone" dataKey="s_priv" stroke="#ef4444" strokeWidth={2} strokeDasharray="5 5" name="Private Cost (S_priv)" dot={false} />
+                    
+                    {/* Only Show Actual Production Level */}
+                    <ReferenceLine x={welfareData.q_actual_val} stroke="#ef4444" strokeDasharray="3 3" label={{ position: 'top', value: 'Actual Q', fontSize: 10, dy: -5 }} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+              <p className="text-[10px] text-slate-500 italic text-center font-medium">Visualization of Market Distortions: Red area represents the waste of fiscal resources.</p>
+            </div>
+          )}
+
+          {/* TAB: Payoff Matrix */}
+          {activeTab === 'matrix' && (
+            <div className="space-y-10 animate-in fade-in duration-500">
+              <div className="flex justify-center gap-2">
+                <button onClick={() => setCompType('symmetric')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase border-2 ${compType === 'symmetric' ? 'border-blue-600 text-blue-600 bg-blue-50' : 'border-slate-100 text-slate-400'}`}>Symmetric</button>
+                <button onClick={() => setCompType('asymmetric')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase border-2 ${compType === 'asymmetric' ? 'border-red-600 text-red-600 bg-red-50' : 'border-slate-100 text-slate-400'}`}>Asymmetric</button>
+              </div>
+              <div className="max-w-md mx-auto grid grid-cols-[100px_1fr_1fr] grid-rows-[60px_100px_100px] gap-3 items-stretch text-center">
+                <div />
+                <div className="flex flex-col items-center justify-center text-[10px] font-black text-slate-400 uppercase tracking-tighter">Hold Price</div>
+                <div className="flex flex-col items-center justify-center text-[10px] font-black text-slate-400 uppercase tracking-tighter">Price Cut</div>
+                <div className="flex items-center justify-center text-[10px] font-black text-slate-800 uppercase border-r pr-2 leading-tight">{matrixData.rL}</div>
+                <div className="bg-slate-50 rounded-3xl flex flex-col items-center justify-center font-black text-xl text-blue-600 shadow-inner">{matrixData.hh[0]}<br/><span className="text-emerald-600">{matrixData.hh[1]}</span></div>
+                <div className="bg-slate-50 rounded-3xl flex flex-col items-center justify-center font-black text-xl opacity-40 text-blue-600 shadow-inner">{matrixData.hl[0]}<br/><span className="text-emerald-600">{matrixData.hl[1]}</span></div>
+                <div className="flex items-center justify-center text-[10px] font-black text-slate-800 uppercase border-r pr-2 leading-tight">Price Cut</div>
+                <div className="bg-slate-50 rounded-3xl flex flex-col items-center justify-center font-black text-xl opacity-40 text-blue-600 shadow-inner">{matrixData.lh[0]}<br/><span className="text-emerald-600">{matrixData.lh[1]}</span></div>
+                <div className={`rounded-3xl flex flex-col items-center justify-center border-4 relative transition-all shadow-xl ${hasSubsidy ? 'bg-emerald-50 border-emerald-400' : 'bg-red-50 border-red-500'}`}>
+                  <div className="font-black text-2xl text-blue-600">{matrixData.ll[0]}<br/><span className="text-emerald-600">{matrixData.ll[1]}</span></div>
+                  <div className="mt-2">
+                    {matrixData.ll[1] < 0 ? <span className="text-[7px] font-black text-red-600 bg-red-100 px-2 py-0.5 rounded-full uppercase flex items-center gap-1"><Skull size={8}/> Exit</span> : (hasSubsidy && compType === 'asymmetric') && <span className="text-[7px] font-black text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full uppercase flex items-center gap-1"><ShieldCheck size={8}/> Zombie</span>}
+                  </div>
+                </div>
+              </div>
+              <div className="p-4 bg-slate-900 rounded-2xl text-white text-[10px] italic opacity-90 leading-relaxed shadow-lg"><strong>Strategic Insight:</strong> {matrixData.analysis}</div>
+            </div>
+          )}
+
+          {/* TAB: Survival Logic Comparison */}
+          {activeTab === 'survival' && (
+            <div className="space-y-6 animate-in fade-in duration-500">
+              <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 flex items-start gap-3 shadow-sm">
+                <AlertTriangle className="text-blue-500 mt-0.5" size={16}/>
+                <div className="text-xs font-medium text-blue-800 leading-relaxed">
+                   <strong>Comparison Logic:</strong> Subsidies shift the <strong>AVC</strong> survival line downward. Firms stay active if $P {' > '} AVC$. The dashed line marks the artificial survival threshold.
+                </div>
+              </div>
+              <div className="h-[380px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={costData} margin={{ top: 20, right: 30, left: 30, bottom: 40 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis dataKey="q" label={{ value: 'Output (Q)', position: 'insideBottom', offset: -10, fontSize: 12, dy: 10 }} tick={{ fontSize: 10 }} />
+                    <YAxis label={{ value: 'Cost/Price', angle: -90, position: 'insideLeft', offset: -15, fontSize: 12 }} tick={{ fontSize: 10 }} />
+                    <Tooltip />
+                    <Legend verticalAlign="top" height={45} wrapperStyle={{ fontSize: '10px', fontWeight: 'bold' }}/>
+                    <Line type="monotone" dataKey="ac_base" stroke="#3b82f6" strokeWidth={2} name="AC (Original)" dot={false} />
+                    <Line type="monotone" dataKey="ac_sub" stroke="#3b82f6" strokeWidth={2} strokeDasharray="5 5" name="AC (Subsidized)" dot={false} />
+                    <Line type="monotone" dataKey="avc_base" stroke="#10b981" strokeWidth={3} name="AVC (Survival Line)" dot={false} />
+                    <Line type="monotone" dataKey="avc_sub" stroke="#f59e0b" strokeWidth={3} strokeDasharray="5 5" name="AVC (Subsidy survival)" dot={false} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <footer className="text-center text-[10px] text-slate-400 font-bold tracking-widest uppercase py-4">
+           Theoretical Model: Soft Budget Constraint & Welfare v10.0
+        </footer>
+      </div>
+    </div>
+  );
+};
+
+export default App;
